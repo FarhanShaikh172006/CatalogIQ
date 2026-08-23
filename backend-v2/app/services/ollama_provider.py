@@ -52,13 +52,13 @@ class OllamaProvider:
                 }
             ],
             "stream": False,
-            "think": False,
             "options": {
                 "temperature": 0.1,
                 "num_predict": 2500,
             },
         }
 
+        # Request structured JSON when required.
         if json_mode:
             payload["format"] = "json"
 
@@ -66,6 +66,16 @@ class OllamaProvider:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+
+        print(
+            f"[Ollama] Requesting model={self.model}, "
+            f"json_mode={json_mode}, "
+            f"prompt_length={len(prompt)}"
+        )
+
+        # ---------------------------------------------------------
+        # Send request
+        # ---------------------------------------------------------
 
         try:
             response = requests.post(
@@ -85,8 +95,13 @@ class OllamaProvider:
                 f"Error={exc}"
             ) from exc
 
+        # ---------------------------------------------------------
+        # Parse response JSON
+        # ---------------------------------------------------------
+
         try:
             data = response.json()
+
         except ValueError as exc:
             raise RuntimeError(
                 "Ollama Cloud returned invalid JSON. "
@@ -95,14 +110,7 @@ class OllamaProvider:
             ) from exc
 
         # ---------------------------------------------------------
-        # Ollama Cloud /api/chat response
-        #
-        # {
-        #     "message": {
-        #         "role": "assistant",
-        #         "content": "..."
-        #     }
-        # }
+        # Validate response structure
         # ---------------------------------------------------------
 
         message = data.get("message")
@@ -114,6 +122,10 @@ class OllamaProvider:
                 f"Response={data}"
             )
 
+        # ---------------------------------------------------------
+        # Extract assistant content
+        # ---------------------------------------------------------
+
         result = message.get("content", "")
 
         if not isinstance(result, str):
@@ -121,10 +133,27 @@ class OllamaProvider:
 
         result = result.strip()
 
+        # ---------------------------------------------------------
+        # Diagnostic logging
+        # ---------------------------------------------------------
+
+        print(
+            f"[Ollama] Response received. "
+            f"done={data.get('done')}, "
+            f"done_reason={data.get('done_reason')}, "
+            f"content_length={len(result)}"
+        )
+
+        # ---------------------------------------------------------
+        # Empty response protection
+        # ---------------------------------------------------------
+
         if not result:
             raise RuntimeError(
                 "Ollama Cloud returned an empty response. "
                 f"Model={self.model}. "
+                f"done={data.get('done')}, "
+                f"done_reason={data.get('done_reason')}, "
                 f"Response={data}"
             )
 
@@ -147,14 +176,14 @@ class OllamaProvider:
     ) -> str:
         """Remove model thinking markers from normal responses."""
 
-        # Remove content before </think>
+        # Remove content before </think>.
         if "</think>" in text:
             text = text.split(
                 "</think>",
                 1,
             )[1]
 
-        # Remove any remaining <think> marker
+        # Remove any remaining <think> marker.
         if "<think>" in text:
             text = text.split(
                 "<think>",
