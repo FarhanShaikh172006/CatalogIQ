@@ -67,31 +67,77 @@ class OllamaProvider:
             "Content-Type": "application/json",
         }
 
-        response = requests.post(
-            f"{self.base_url}/api/chat",
-            json=payload,
-            headers=headers,
-            timeout=self.timeout,
-        )
+        try:
+            response = requests.post(
+                f"{self.base_url}/api/chat",
+                json=payload,
+                headers=headers,
+                timeout=self.timeout,
+            )
 
-        response.raise_for_status()
+            response.raise_for_status()
 
-        data = response.json()
+        except requests.RequestException as exc:
+            raise RuntimeError(
+                "Ollama Cloud request failed. "
+                f"Model={self.model}, "
+                f"URL={self.base_url}/api/chat, "
+                f"Error={exc}"
+            ) from exc
 
-        result = (
-            data.get("message", {})
-            .get("content", "")
-            .strip()
-        )
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise RuntimeError(
+                "Ollama Cloud returned invalid JSON. "
+                f"HTTP={response.status_code}, "
+                f"Response={response.text[:1000]}"
+            ) from exc
+
+        # ---------------------------------------------------------
+        # Ollama Cloud /api/chat response
+        #
+        # {
+        #     "message": {
+        #         "role": "assistant",
+        #         "content": "..."
+        #     }
+        # }
+        # ---------------------------------------------------------
+
+        message = data.get("message")
+
+        if not isinstance(message, dict):
+            raise RuntimeError(
+                "Ollama Cloud returned no valid message object. "
+                f"Model={self.model}. "
+                f"Response={data}"
+            )
+
+        result = message.get("content", "")
+
+        if not isinstance(result, str):
+            result = str(result)
+
+        result = result.strip()
 
         if not result:
             raise RuntimeError(
                 "Ollama Cloud returned an empty response. "
-                f"Model={self.model}"
+                f"Model={self.model}. "
+                f"Response={data}"
             )
+
+        # ---------------------------------------------------------
+        # JSON mode
+        # ---------------------------------------------------------
 
         if json_mode:
             return self._extract_json(result)
+
+        # ---------------------------------------------------------
+        # Normal text response
+        # ---------------------------------------------------------
 
         return self._clean_response(result)
 
@@ -99,14 +145,16 @@ class OllamaProvider:
         self,
         text: str,
     ) -> str:
-        """Remove Qwen thinking markers from normal responses."""
+        """Remove model thinking markers from normal responses."""
 
+        # Remove content before </think>
         if "</think>" in text:
             text = text.split(
                 "</think>",
                 1,
             )[1]
 
+        # Remove any remaining <think> marker
         if "<think>" in text:
             text = text.split(
                 "<think>",
@@ -123,7 +171,10 @@ class OllamaProvider:
 
         text = self._clean_response(text)
 
+        # ---------------------------------------------------------
         # Remove markdown code fences
+        # ---------------------------------------------------------
+
         text = re.sub(
             r"```(?:json)?",
             "",
@@ -136,7 +187,10 @@ class OllamaProvider:
             "",
         ).strip()
 
-        # Try entire response
+        # ---------------------------------------------------------
+        # Try entire response first
+        # ---------------------------------------------------------
+
         try:
             parsed = json.loads(text)
 
@@ -148,7 +202,10 @@ class OllamaProvider:
         except json.JSONDecodeError:
             pass
 
+        # ---------------------------------------------------------
         # Find JSON object
+        # ---------------------------------------------------------
+
         start = text.find("{")
         end = text.rfind("}")
 
@@ -172,7 +229,10 @@ class OllamaProvider:
             except json.JSONDecodeError:
                 pass
 
+        # ---------------------------------------------------------
         # Find JSON array
+        # ---------------------------------------------------------
+
         start = text.find("[")
         end = text.rfind("]")
 
@@ -195,6 +255,10 @@ class OllamaProvider:
 
             except json.JSONDecodeError:
                 pass
+
+        # ---------------------------------------------------------
+        # No valid JSON found
+        # ---------------------------------------------------------
 
         raise RuntimeError(
             "Ollama returned a response, but no valid JSON "
