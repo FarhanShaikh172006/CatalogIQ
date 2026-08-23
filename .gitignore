@@ -36,3 +36,6 @@ Thumbs.db
 build/
 dist/
 *.egg-info/
+
+# Local/sample datasets
+Unihack_ Sample Dataset - Input.csv
