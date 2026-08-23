@@ -22,18 +22,16 @@ out/
 .vscode/
 .idea/
 
-# OS
-.DS_Store
-Thumbs.db
-
 # Python tooling
 .pytest_cache/
 .ruff_cache/
 
 # Generated files
 output/
-*.xlsx
-*.csv
 
 # Logs
 *.log
+
+# OS
+.DS_Store
+Thumbs.db
