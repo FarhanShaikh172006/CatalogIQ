@@ -39,3 +39,6 @@ dist/
 
 # Local/sample datasets
 Unihack_ Sample Dataset - Input.csv
+
+# Local input datasets
+data/inputs/
